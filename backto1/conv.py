@@ -65,6 +65,8 @@ class _Conv:
             lca.DQSystem,
             lca.Flow,
             lca.FlowProperty,
+            lca.ImpactMethod,
+            lca.ImpactCategory,
             lca.Location,
             lca.Parameter,
             lca.Process,
@@ -79,6 +81,7 @@ class _Conv:
         convs: dict[type, Callable[[Map], None]] = {
             lca.Currency: self._conv_currency,
             lca.Flow: self._conv_flow,
+            lca.ImpactCategory: self._conv_impact,
             lca.Parameter: self._conv_parameter,
             lca.Process: self._conv_process,
             lca.UnitGroup: self._conv_unit_group,
@@ -88,6 +91,9 @@ class _Conv:
             count = 0
             conv = convs.get(type_)
             for e in self.inp.read_each(type_):
+                if isinstance(e, lca.ImpactMethod):
+                    self._extract_nw_sets(e)
+
                 d = e.to_dict()
                 if conv:
                     conv(d)
@@ -158,6 +164,12 @@ class _Conv:
         doc: Map | None = d.get("processDocumentation")
         if doc is not None:
             doc["copyright"] = doc.pop("isCopyrightProtected", False)
+            dates = ["creationDate", "validFrom", "validUntil"]
+            for dt in dates:
+                date: str | None = doc.get(dt, None)
+                if date is not None:
+                    doc[dt] = date.split("T")[0]
+
         exchanges: list[Map] | None = d.get("exchanges")
         if exchanges is not None:
             for e in exchanges:
@@ -182,6 +194,18 @@ class _Conv:
                 prop["referenceFlowProperty"] = prop.pop(
                     "isRefFlowProperty", False
                 )
+
+    def _extract_nw_sets(self, method: lca.ImpactMethod):
+        if method.nw_sets is not None:
+            for nw_set in method.nw_sets:
+                if nw_set.id is None:
+                    nw_set.id = str(uuid.uuid4())
+                d = nw_set.to_dict()
+                d["@type"] = "NwSet"
+                self._put("nw_sets", d)
+
+    def _conv_impact(self, d: Map):
+        d["referenceUnitName"] = d.pop("refUnit", None)
 
 
 def convert(input: Path, output: Path):
