@@ -6,10 +6,12 @@ import zipfile
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast, Any, Optional
+from typing import cast, Any, Callable, Optional
 
 import olca_schema as lca
 from olca_schema import zipio
+
+Map = dict[str, Any]
 
 
 @dataclass
@@ -29,11 +31,12 @@ class _Category:
         path_id = (f"{self.model_type}/{self.path()}").lower()
         return str(uuid.uuid3(cast(uuid.UUID, ns), path_id))
 
-    def to_dict(self, add_parent: bool = True) -> dict[str, Any]:
-        d: dict[str, Any] = {
+    def to_dict(self, add_parent: bool = True) -> Map:
+        d: Map = {
             "@type": "Category",
             "@id": self.uid(),
             "name": self.name,
+            "modelType": self.model_type,
         }
         if self.parent and add_parent:
             d["category"] = self.parent.to_dict(add_parent=False)
@@ -47,6 +50,7 @@ class _Conv:
             output, mode="a", compression=zipfile.ZIP_DEFLATED
         )
         self.categories: dict[str, dict[str, _Category]] = {}
+        self.impacts_copies: dict[str, list[str]] = {}
 
     def __enter__(self):
         return self
@@ -55,15 +59,46 @@ class _Conv:
         self.close()
 
     def run(self):
-        types = [lca.UnitGroup]
+        types = [
+            lca.Actor,
+            lca.Currency,
+            lca.DQSystem,
+            lca.Flow,
+            lca.FlowProperty,
+            lca.Location,
+            lca.Parameter,
+            lca.Process,
+            lca.ProductSystem,
+            lca.Project,
+            lca.SocialIndicator,
+            lca.Source,
+            lca.UnitGroup,
+        ]
+
+        # custom conversion functions
+        convs: dict[type, Callable[[Map], None]] = {
+            lca.Currency: self._conv_currency,
+            lca.Flow: self._conv_flow,
+            lca.Parameter: self._conv_parameter,
+            lca.Process: self._conv_process,
+            lca.UnitGroup: self._conv_unit_group,
+        }
+
         for type_ in types:
             count = 0
+            conv = convs.get(type_)
             for e in self.inp.read_each(type_):
                 d = e.to_dict()
+                if conv:
+                    conv(d)
                 category = self.category(e)
                 d["category"] = category.to_dict() if category else None
                 self._put(_folder_of(e), d)
                 count += 1
+                if count % 1000 == 0:
+                    log.info(
+                        "converted %i instances of %s", count, type_.__name__
+                    )
             log.info("converted %i instances of %s", count, type_.__name__)
 
     def close(self):
@@ -99,13 +134,54 @@ class _Conv:
             category = next_
         return category
 
-    def _put(self, folder: str, entry: dict[str, Any]):
+    def _put(self, folder: str, entry: Map):
         uid = entry.get("@id")
         if uid is None:
             log.error("@id missing in entry")
             return
         s = json.dumps(entry, indent="  ")
         self.out.writestr(f"{folder}/{uid}.json", s)
+
+    def _conv_unit_group(self, d: Map):
+        units = d.get("units")
+        if units is None:
+            return
+        for unit in units:
+            unit_dict = cast(Map, unit)
+            unit_dict["referenceUnit"] = unit_dict.pop("isRefUnit", False)
+
+    def _conv_currency(self, d: Map):
+        d["referenceCurrency"] = d.pop("refCurrency", None)
+
+    def _conv_process(self, d: Map):
+        d["infrastructureProcess"] = d.pop("isInfrastructureProcess", False)
+        doc: Map | None = d.get("processDocumentation")
+        if doc is not None:
+            doc["copyright"] = doc.pop("isCopyrightProtected", False)
+        exchanges: list[Map] | None = d.get("exchanges")
+        if exchanges is not None:
+            for e in exchanges:
+                e["avoidedProduct"] = e.pop("isAvoidedProduct", False)
+                e["input"] = e.pop("isInput", False)
+                e["quantitativeReference"] = e.pop(
+                    "isQuantitativeReference", False
+                )
+        parameters: list[Map] | None = d.get("parameters")
+        if parameters is not None:
+            for p in parameters:
+                self._conv_parameter(p)
+
+    def _conv_parameter(self, d: Map):
+        d["inputParameter"] = d.pop("isIputParameter", False)
+
+    def _conv_flow(self, d: Map):
+        d["infrastructureFlow"] = d.pop("isInfrastructureFlow", False)
+        props: list[Map] | None = d.get("flowProperties")
+        if props is not None:
+            for prop in props:
+                prop["referenceFlowProperty"] = prop.pop(
+                    "isRefFlowProperty", False
+                )
 
 
 def convert(input: Path, output: Path):
