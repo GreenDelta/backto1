@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "backto1"
-version = "0.0.1"
+version = "0.0.2"
 description = "A small command line tool for converting openLCA 2 JSON packages back to version 1."
 readme = "README.md"
 requires-python = ">=3.11"
