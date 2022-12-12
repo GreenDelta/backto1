@@ -186,7 +186,7 @@ class _Conv:
                 self._conv_parameter(p)
 
     def _conv_parameter(self, d: Map):
-        d["inputParameter"] = d.pop("isIputParameter", False)
+        d["inputParameter"] = d.pop("isInputParameter", False)
 
     def _conv_flow(self, d: Map):
         d["infrastructureFlow"] = d.pop("isInfrastructureFlow", False)
