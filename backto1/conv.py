@@ -84,6 +84,7 @@ class _Conv:
             lca.ImpactCategory: self._conv_impact,
             lca.Parameter: self._conv_parameter,
             lca.Process: self._conv_process,
+            lca.ProductSystem: self._conv_system,
             lca.UnitGroup: self._conv_unit_group,
         }
 
@@ -206,6 +207,22 @@ class _Conv:
 
     def _conv_impact(self, d: Map):
         d["referenceUnitName"] = d.pop("refUnit", None)
+
+    def _conv_system(self, d: Map):
+        d["referenceExchange"] = d.pop("refExchange", None)
+        d["referenceProcess"] = d.pop("refProcess", None)
+
+        param_sets: list[Map] | None = d.pop("parameterSets", None)
+        if param_sets:
+            param_set: Map | None = None
+            for ps in param_sets:
+                if ps.get("isBaseline", False):
+                    param_set = ps
+                    break
+                if not param_set:
+                    param_set = ps
+            if param_set:
+                d["parameterRedefs"] = param_set.get("parameters", None)
 
 
 def convert(input: Path, output: Path):
