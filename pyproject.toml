@@ -30,8 +30,8 @@ classifiers = [
 backto1 = "backto1:main"
 
 [project.urls]
-"Homepage" = "https://github.com/msrocka/backto1"
-"Bug Tracker" = "https://github.com/msrocka/backto1/issues"
+"Homepage" = "https://github.com/GreenDelta/backto1"
+"Bug Tracker" = "https://github.com/GreenDelta/backto1/issues"
 
 [tool.setuptools.packages.find]
 include = ["backto1"]
