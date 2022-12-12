@@ -82,6 +82,7 @@ class _Conv:
             lca.Currency: self._conv_currency,
             lca.Flow: self._conv_flow,
             lca.ImpactCategory: self._conv_impact,
+            lca.Location: self._conv_location,
             lca.Parameter: self._conv_parameter,
             lca.Process: self._conv_process,
             lca.ProductSystem: self._conv_system,
@@ -212,6 +213,8 @@ class _Conv:
         d["referenceExchange"] = d.pop("refExchange", None)
         d["referenceProcess"] = d.pop("refProcess", None)
 
+        # take the parameter redefinitions of the baseline parameter set,
+        # if there is none, take them from the first parameter set, if any
         param_sets: list[Map] | None = d.pop("parameterSets", None)
         if param_sets:
             param_set: Map | None = None
@@ -223,6 +226,30 @@ class _Conv:
                     param_set = ps
             if param_set:
                 d["parameterRedefs"] = param_set.get("parameters", None)
+
+
+    def _conv_location(self, d: Map):
+        # version 1 does not understand multi-polygons but geometry-collections
+        geo: Map = d.get("geometry", None)
+        if not geo:
+            return
+
+        geo_type = geo.get("type", None)
+        coordinates: list[Any] | None = geo.get("coordinates")
+        if geo_type != "MultiPolygon" or not coordinates:
+            return
+
+        polygons: list[Map] = []
+        for coords in coordinates:
+            polygons.append({
+                "type": "Polygon",
+                "coordinates": coords
+            })
+
+        d["geometry"] = {
+            "type": "GeometryCollection",
+            "geometries": polygons
+        }
 
 
 def convert(input: Path, output: Path):
